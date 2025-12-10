@@ -1,0 +1,219 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id               String    @id @default(cuid())
+  email            String    @unique
+  passwordHash     String
+  twoFactorEnabled Boolean   @default(false)
+  twoFactorSecret  String?
+  backupCodes      String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  urls          Url[]
+  sessions      Session[]
+  executionLogs ExecutionLog[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@map("sessions")
+}
+
+model Url {
+  id          String  @id @default(cuid())
+  userId      String
+  user        User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  url         String
+  label       String
+  enabled     Boolean @default(true)
+  description String?
+
+  runIntervalSeconds Int      @default(1800)
+  scheduleStartTime  String?
+  scheduleEndTime    String?
+  timezone           String   @default("UTC")
+  repeatCount        Int?
+
+  navigationLinks         String  @default("[]")
+  interactions            String  @default("[]")
+  formDataMappings        String?
+  delayBetweenActions     Int     @default(1000)
+  randomBehaviorVariation Int     @default(10)
+
+  proxyUrl        String?
+  customHeaders   String?
+  customCookies   String?
+  customUserAgent String?
+  javascriptCode  String?
+  networkThrottle String?
+
+  screenshotInterval Int?
+  errorNotifications Boolean @default(false)
+  performanceLogging Boolean @default(true)
+
+  autoNavigate        Boolean @default(true)
+  autoCrawlDepth      Int     @default(3)
+  autoScreenshot      Boolean @default(true)
+  screenshotPages     Int     @default(10)
+  autoScrape          Boolean @default(false)
+  scrapeSelectors     String  @default("[]")
+  paginationSelector  String?
+  maxPagesToVisit     Int     @default(50)
+  followExternalLinks Boolean @default(false)
+  changeDetection     Boolean @default(true)
+  changeThreshold     Int     @default(10)
+
+  lastRunAt       DateTime?
+  nextScheduledAt DateTime?
+  lastErrorAt     DateTime?
+  errorCount      Int       @default(0)
+  successCount    Int       @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  configurations  UrlConfiguration[]
+  screenshots     Screenshot[]
+  executionLogs   ExecutionLog[]
+  pageVisits      PageVisit[]
+  scrapedData     ScrapedData[]
+  pageSnapshots   PageSnapshot[]
+  traversalQueues TraversalQueue[]
+
+  @@map("urls")
+}
+
+model UrlConfiguration {
+  id          String @id @default(cuid())
+  urlId       String
+  url         Url    @relation(fields: [urlId], references: [id], onDelete: Cascade)
+  configKey   String
+  configValue String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([urlId, configKey])
+  @@map("url_configurations")
+}
+
+model Screenshot {
+  id       String @id @default(cuid())
+  urlId    String
+  url      Url    @relation(fields: [urlId], references: [id], onDelete: Cascade)
+  filePath String
+  fileName String
+  width    Int
+  height   Int
+  fileSize Int
+  pageUrl  String?
+  pageTitle String?
+
+  capturedAt DateTime
+  createdAt  DateTime @default(now())
+
+  @@map("screenshots")
+}
+
+model ExecutionLog {
+  id               String    @id @default(cuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  urlId            String
+  url              Url       @relation(fields: [urlId], references: [id], onDelete: Cascade)
+  status           String
+  errorMessage     String?
+  errorStack       String?
+  duration         Int
+  actionsCompleted Int
+  screenshotsTaken Int
+  pagesVisited     Int       @default(0)
+  dataScraped      Int       @default(0)
+  changesDetected  Int       @default(0)
+  startedAt        DateTime
+  completedAt      DateTime?
+
+  @@map("execution_logs")
+}
+
+model PageVisit {
+  id        String   @id @default(cuid())
+  urlId     String
+  url       Url      @relation(fields: [urlId], references: [id], onDelete: Cascade)
+  pageUrl   String
+  pageTitle String?
+  depth     Int      @default(0)
+  status    String   @default("pending")
+  visitedAt DateTime?
+  duration  Int?
+  
+  createdAt DateTime @default(now())
+
+  @@index([urlId, pageUrl])
+  @@map("page_visits")
+}
+
+model ScrapedData {
+  id          String   @id @default(cuid())
+  urlId       String
+  url         Url      @relation(fields: [urlId], references: [id], onDelete: Cascade)
+  pageUrl     String
+  selector    String
+  dataType    String   @default("text")
+  dataKey     String?
+  dataValue   String
+  
+  scrapedAt   DateTime @default(now())
+
+  @@index([urlId, pageUrl])
+  @@map("scraped_data")
+}
+
+model PageSnapshot {
+  id            String   @id @default(cuid())
+  urlId         String
+  url           Url      @relation(fields: [urlId], references: [id], onDelete: Cascade)
+  pageUrl       String
+  contentHash   String
+  htmlLength    Int
+  screenshotId  String?
+  changePercent Float    @default(0)
+  
+  capturedAt    DateTime @default(now())
+
+  @@index([urlId, pageUrl])
+  @@map("page_snapshots")
+}
+
+model TraversalQueue {
+  id         String   @id @default(cuid())
+  urlId      String
+  url        Url      @relation(fields: [urlId], references: [id], onDelete: Cascade)
+  pageUrl    String
+  depth      Int      @default(0)
+  priority   Int      @default(0)
+  status     String   @default("pending")
+  retryCount Int      @default(0)
+  
+  createdAt  DateTime @default(now())
+  processedAt DateTime?
+
+  @@unique([urlId, pageUrl])
+  @@index([urlId, status])
+  @@map("traversal_queues")
+}
