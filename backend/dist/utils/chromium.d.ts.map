@@ -1,0 +1,1 @@
+{"version":3,"file":"chromium.d.ts","sourceRoot":"","sources":["../../src/utils/chromium.ts"],"names":[],"mappings":"AAgPA,wBAAgB,mBAAmB,IAAI,MAAM,GAAG,SAAS,CA2FxD;AAED,wBAAgB,gBAAgB,IAAI,MAAM,EAAE,CAmC3C;AAED,wBAAgB,kBAAkB;;;;;;;;;;;;EAiBjC;AAED,wBAAgB,qBAAqB,IAAI;IAAE,KAAK,EAAE,OAAO,CAAC;IAAC,IAAI,CAAC,EAAE,MAAM,CAAC;IAAC,KAAK,CAAC,EAAE,MAAM,CAAA;CAAE,CA8BzF"}

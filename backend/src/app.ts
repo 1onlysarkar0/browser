@@ -1,11 +1,12 @@
-import express from 'express';
+import express, { Request, Response } from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import { config } from './config';
+import { config, logConfig } from './config';
 import logger from './utils/logger';
 import { schedulerService } from './services/scheduler.service';
+import { validateChromiumSetup } from './utils/chromium';
 
 import authRoutes from './routes/auth.routes';
 import urlRoutes from './routes/url.routes';
@@ -16,7 +17,7 @@ const app = express();
 const httpServer = createServer(app);
 
 const corsOptions = {
-  origin: true,
+  origin: config.corsOrigins.length > 0 ? config.corsOrigins : true,
   credentials: true,
 };
 
@@ -35,8 +36,20 @@ app.use('/api/urls', urlRoutes);
 app.use('/api/screenshots', screenshotRoutes);
 app.use('/api/system', systemRoutes);
 
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+app.get('/api/health', (req: Request, res: Response) => {
+  res.json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    environment: config.nodeEnv,
+  });
+});
+
+app.get('/api/browser-status', (req: Request, res: Response) => {
+  const browserStatus = validateChromiumSetup();
+  res.json({ 
+    browser: browserStatus,
+    timestamp: new Date().toISOString(),
+  });
 });
 
 io.on('connection', (socket) => {
@@ -74,7 +87,15 @@ export const emitScreenshotCaptured = (urlId: string, data: any) => {
 const PORT = config.port;
 
 httpServer.listen(PORT, '0.0.0.0', () => {
+  logConfig();
   logger.info(`Server running on port ${PORT}`);
+  
+  const browserStatus = validateChromiumSetup();
+  if (browserStatus.valid) {
+    logger.info(`Chromium available at: ${browserStatus.path}`);
+  } else {
+    logger.warn(`Chromium not available: ${browserStatus.error}`);
+  }
   
   schedulerService.start();
   logger.info('Automation scheduler started');

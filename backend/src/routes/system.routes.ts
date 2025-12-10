@@ -1,18 +1,17 @@
-import { Router, Response } from 'express';
+import { Router, Request, Response } from 'express';
 import { schedulerService } from '../services/scheduler.service';
 import { authMiddleware } from '../middleware/auth.middleware';
-import { AuthenticatedRequest } from '../types';
 import prisma from '../utils/prisma';
 
 const router = Router();
 
-router.get('/health', async (req, res) => {
+router.get('/health', async (req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 router.use(authMiddleware);
 
-router.get('/status', async (req: AuthenticatedRequest, res: Response) => {
+router.get('/status', async (req: Request, res: Response) => {
   try {
     const schedulerStatus = schedulerService.getStatus();
     
@@ -38,12 +37,13 @@ router.get('/status', async (req: AuthenticatedRequest, res: Response) => {
         recentErrors,
       },
     });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to get status';
+    res.status(500).json({ error: message });
   }
 });
 
-router.get('/metrics', async (req: AuthenticatedRequest, res: Response) => {
+router.get('/metrics', async (req: Request, res: Response) => {
   try {
     const last24Hours = new Date(Date.now() - 24 * 60 * 60 * 1000);
     
@@ -75,12 +75,13 @@ router.get('/metrics', async (req: AuthenticatedRequest, res: Response) => {
       successRate: rate.toFixed(2),
       totalExecutions24h: total,
     });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to get metrics';
+    res.status(500).json({ error: message });
   }
 });
 
-router.get('/history', async (req: AuthenticatedRequest, res: Response) => {
+router.get('/history', async (req: Request, res: Response) => {
   try {
     const limit = parseInt(req.query.limit as string) || 50;
     const offset = parseInt(req.query.offset as string) || 0;
@@ -99,8 +100,9 @@ router.get('/history', async (req: AuthenticatedRequest, res: Response) => {
     ]);
 
     res.json({ logs, total, limit, offset });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to get history';
+    res.status(500).json({ error: message });
   }
 });
 

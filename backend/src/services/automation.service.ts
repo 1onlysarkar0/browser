@@ -770,7 +770,7 @@ export class AutomationService {
   }
 
   async captureScreenshotOnly(urlConfig: any): Promise<string> {
-    let page = null;
+    let page: any = null;
     try {
       await this.initialize();
       if (!this.browser) throw new Error('Browser not initialized');

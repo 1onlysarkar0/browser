@@ -1,13 +1,3 @@
-import { Request } from 'express';
-
-export interface AuthenticatedRequest extends Request {
-  userId?: string;
-  user?: {
-    id: string;
-    email: string;
-  };
-}
-
 export interface InteractionStep {
   type: 'navigate' | 'click' | 'doubleClick' | 'rightClick' | 'fill' | 'type' | 'press' | 'selectOption' | 'check' | 'uncheck' | 'scroll' | 'scrollToElement' | 'scrollToBottom' | 'scrollToTop' | 'waitForSelector' | 'waitForNavigation' | 'waitForTime' | 'screenshot' | 'getElementText' | 'getAttribute' | 'evaluateJs' | 'goBack' | 'goForward' | 'reload' | 'hover' | 'dragAndDrop';
   selector?: string;

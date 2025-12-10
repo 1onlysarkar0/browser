@@ -210,7 +210,7 @@ export class AuthService {
   }
 
   private generateToken(userId: string): string {
-    return jwt.sign({ userId }, config.jwtSecret, { expiresIn: config.jwtExpiry });
+    return jwt.sign({ userId }, config.jwtSecret, { expiresIn: '7d' });
   }
 
   private async createSession(userId: string, token: string) {
