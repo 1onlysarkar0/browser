@@ -128,6 +128,40 @@ export class ScreenshotService {
       offset,
     };
   }
+
+  async deleteAll(userId: string) {
+    const screenshots = await prisma.screenshot.findMany({
+      where: {
+        url: { userId },
+      },
+      select: { id: true, filePath: true },
+    });
+
+    const count = screenshots.length;
+
+    await prisma.screenshot.deleteMany({
+      where: {
+        url: { userId },
+      },
+    });
+
+    let filesDeleted = 0;
+    let fileErrors = 0;
+    for (const screenshot of screenshots) {
+      try {
+        if (fs.existsSync(screenshot.filePath)) {
+          fs.unlinkSync(screenshot.filePath);
+          filesDeleted++;
+        }
+      } catch (error) {
+        fileErrors++;
+        logger.warn(`Failed to delete screenshot file ${screenshot.filePath}: ${(error as Error).message}`);
+      }
+    }
+
+    logger.info(`Deleted ${count} screenshot records for user ${userId} (${filesDeleted} files removed, ${fileErrors} file errors)`);
+    return count;
+  }
 }
 
 export const screenshotService = new ScreenshotService();

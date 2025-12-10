@@ -6,6 +6,9 @@ import { SidebarProvider, SidebarTrigger, SidebarInset } from '@/components/ui/s
 import { AppSidebar } from '@/components/common/AppSidebar';
 import { useAuthStore } from '@/store/auth';
 import { Toaster } from '@/components/ui/sonner';
+import { ThemeToggle } from '@/components/theme-toggle';
+import { Separator } from '@/components/ui/separator';
+import { Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbPage } from '@/components/ui/breadcrumb';
 
 export default function DashboardLayout({
   children,
@@ -41,10 +44,23 @@ export default function DashboardLayout({
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset>
-        <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
-          <SidebarTrigger className="-ml-1" />
+        <header className="flex h-14 md:h-16 shrink-0 items-center justify-between gap-2 border-b px-3 md:px-6 transition-[width,height] ease-linear">
+          <div className="flex items-center gap-2">
+            <SidebarTrigger className="-ml-1" />
+            <Separator orientation="vertical" className="h-4 hidden md:block" />
+            <Breadcrumb className="hidden md:flex">
+              <BreadcrumbList>
+                <BreadcrumbItem>
+                  <BreadcrumbPage className="text-sm font-medium">Browser Automation</BreadcrumbPage>
+                </BreadcrumbItem>
+              </BreadcrumbList>
+            </Breadcrumb>
+          </div>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+          </div>
         </header>
-        <main className="flex-1 overflow-auto p-6">
+        <main className="flex-1 overflow-auto p-3 md:p-6">
           {children}
         </main>
       </SidebarInset>

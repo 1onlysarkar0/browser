@@ -8,7 +8,17 @@ interface Url {
   enabled: boolean;
   description?: string;
   runIntervalSeconds: number;
+  scheduleStartTime?: string;
+  scheduleEndTime?: string;
+  timezone?: string;
+  delayBetweenActions?: number;
+  randomBehaviorVariation?: number;
+  customUserAgent?: string;
+  javascriptCode?: string;
+  screenshotInterval?: number;
+  interactions?: any[];
   lastRunAt?: string;
+  lastErrorAt?: string;
   nextScheduledAt?: string;
   errorCount: number;
   successCount: number;
@@ -29,6 +39,8 @@ interface UrlState {
   toggleUrlStatus: (id: string) => Promise<void>;
   runUrl: (id: string) => Promise<void>;
   captureScreenshot: (id: string) => Promise<void>;
+  bulkToggle: (ids: string[], enabled: boolean) => Promise<void>;
+  bulkDelete: (ids: string[]) => Promise<void>;
 }
 
 export const useUrlStore = create<UrlState>((set, get) => ({
@@ -96,5 +108,24 @@ export const useUrlStore = create<UrlState>((set, get) => ({
 
   captureScreenshot: async (id: string) => {
     await urlApi.captureScreenshot(id);
+  },
+
+  bulkToggle: async (ids: string[], enabled: boolean) => {
+    for (const id of ids) {
+      const url = get().urls.find(u => u.id === id);
+      if (url && url.enabled !== enabled) {
+        await urlApi.toggleStatus(id);
+      }
+    }
+    await get().fetchUrls();
+  },
+
+  bulkDelete: async (ids: string[]) => {
+    for (const id of ids) {
+      await urlApi.delete(id);
+    }
+    set((state) => ({
+      urls: state.urls.filter((u) => !ids.includes(u.id)),
+    }));
   },
 }));

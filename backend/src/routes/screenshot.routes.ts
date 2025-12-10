@@ -63,4 +63,13 @@ router.delete('/:id', async (req: AuthenticatedRequest, res: Response) => {
   }
 });
 
+router.delete('/', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const count = await screenshotService.deleteAll(req.userId!);
+    res.json({ success: true, deleted: count });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
 export default router;

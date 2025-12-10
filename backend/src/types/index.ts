@@ -9,8 +9,9 @@ export interface AuthenticatedRequest extends Request {
 }
 
 export interface InteractionStep {
-  type: 'navigate' | 'click' | 'doubleClick' | 'rightClick' | 'fill' | 'type' | 'press' | 'selectOption' | 'check' | 'uncheck' | 'scroll' | 'scrollToElement' | 'scrollToBottom' | 'scrollToTop' | 'waitForSelector' | 'waitForNavigation' | 'waitForTime' | 'screenshot' | 'getElementText' | 'getAttribute' | 'evaluateJs' | 'goBack' | 'goForward' | 'reload';
+  type: 'navigate' | 'click' | 'doubleClick' | 'rightClick' | 'fill' | 'type' | 'press' | 'selectOption' | 'check' | 'uncheck' | 'scroll' | 'scrollToElement' | 'scrollToBottom' | 'scrollToTop' | 'waitForSelector' | 'waitForNavigation' | 'waitForTime' | 'screenshot' | 'getElementText' | 'getAttribute' | 'evaluateJs' | 'goBack' | 'goForward' | 'reload' | 'hover' | 'dragAndDrop';
   selector?: string;
+  targetSelector?: string;
   value?: string;
   timeout?: number;
   xOffset?: number;

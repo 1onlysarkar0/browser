@@ -7,37 +7,91 @@ import { config } from '../config';
 import logger from '../utils/logger';
 import prisma from '../utils/prisma';
 import { resolveChromiumPath, getPuppeteerArgs } from '../utils/chromium';
+import { traversalService, TraversalConfig } from './traversal.service';
+import { scraperService, ScrapeSelector } from './scraper.service';
+import { captureService } from './capture.service';
+import { changeDetectionService } from './change-detection.service';
+import { resilienceService } from './resilience.service';
+
+export interface AutomationResult extends ExecutionResult {
+  pagesVisited: number;
+  dataScraped: number;
+  changesDetected: number;
+}
 
 export class AutomationService {
   private browser: Browser | null = null;
+  private browserLock: boolean = false;
 
-  async initialize() {
-    if (!this.browser) {
-      const executablePath = resolveChromiumPath();
-      const launchOptions: any = {
-        headless: true,
-        args: getPuppeteerArgs(),
-      };
-
-      if (executablePath) {
-        launchOptions.executablePath = executablePath;
-      }
-
-      try {
-        this.browser = await puppeteer.launch(launchOptions);
-        logger.info('Browser initialized successfully');
-      } catch (error: any) {
-        logger.error(`Failed to launch browser: ${error.message}`);
-        throw new Error(`Browser initialization failed. Please ensure Chromium is installed or set CHROMIUM_PATH environment variable.`);
-      }
+  private async isBrowserConnected(): Promise<boolean> {
+    if (!this.browser) return false;
+    try {
+      const pages = await this.browser.pages();
+      return pages !== undefined;
+    } catch {
+      return false;
     }
-    return this.browser;
   }
 
-  async executeUrl(urlConfig: any): Promise<ExecutionResult> {
+  async initialize() {
+    while (this.browserLock) {
+      await this.sleep(100);
+    }
+    
+    this.browserLock = true;
+    try {
+      const isConnected = await this.isBrowserConnected();
+      
+      if (!isConnected) {
+        if (this.browser) {
+          try {
+            await this.browser.close();
+          } catch {
+          }
+          this.browser = null;
+        }
+
+        const executablePath = resolveChromiumPath();
+        const launchOptions: any = {
+          headless: true,
+          args: getPuppeteerArgs(),
+        };
+
+        if (executablePath) {
+          launchOptions.executablePath = executablePath;
+        }
+
+        try {
+          this.browser = await puppeteer.launch(launchOptions);
+          logger.info('Browser initialized successfully');
+        } catch (error: any) {
+          logger.error(`Failed to launch browser: ${error.message}`);
+          throw new Error(`Browser initialization failed. Please ensure Chromium is installed or set CHROMIUM_PATH environment variable.`);
+        }
+      }
+      return this.browser;
+    } finally {
+      this.browserLock = false;
+    }
+  }
+
+  async closeBrowser() {
+    if (this.browser) {
+      try {
+        await this.browser.close();
+      } catch {
+      }
+      this.browser = null;
+    }
+  }
+
+  async executeUrl(urlConfig: any): Promise<AutomationResult> {
     const startTime = Date.now();
     let actionsCompleted = 0;
     let screenshotsTaken = 0;
+    let pagesVisited = 0;
+    let dataScraped = 0;
+    let changesDetected = 0;
     let page: Page | null = null;
 
     try {
@@ -45,7 +99,6 @@ export class AutomationService {
       if (!this.browser) throw new Error('Browser not initialized');
 
       page = await this.browser.newPage();
-
       await page.setViewport({ width: 1920, height: 1080 });
 
       if (urlConfig.customUserAgent) {
@@ -71,9 +124,18 @@ export class AutomationService {
         await page.setCookie(...cookieArray);
       }
 
-      logger.info(`Navigating to ${urlConfig.url}`);
-      await page.goto(urlConfig.url, { waitUntil: 'networkidle2', timeout: 30000 });
+      await resilienceService.handlePopups(page);
+
+      logger.info(`[Auto] Navigating to ${urlConfig.url}`);
+      const navSuccess = await resilienceService.safeNavigate(page, urlConfig.url);
+      if (!navSuccess) {
+        throw new Error(`Failed to navigate to ${urlConfig.url}`);
+      }
       actionsCompleted++;
+      pagesVisited++;
+
+      await resilienceService.waitForPageStable(page);
+      await resilienceService.handlePopups(page);
 
       if (urlConfig.javascriptCode) {
         await page.evaluate(urlConfig.javascriptCode);
@@ -82,22 +144,76 @@ export class AutomationService {
 
       const interactions = typeof urlConfig.interactions === 'string'
         ? JSON.parse(urlConfig.interactions)
-        : urlConfig.interactions;
+        : urlConfig.interactions || [];
 
       for (const step of interactions) {
         await this.executeStep(page, step, urlConfig);
         actionsCompleted++;
 
         const delay = this.getRandomDelay(
-          urlConfig.delayBetweenActions,
-          urlConfig.randomBehaviorVariation
+          urlConfig.delayBetweenActions || 1000,
+          urlConfig.randomBehaviorVariation || 10
         );
         await this.sleep(delay);
       }
 
-      if (urlConfig.screenshotInterval) {
-        const screenshotPath = await this.captureScreenshot(page, urlConfig.id);
-        screenshotsTaken++;
+      if (urlConfig.changeDetection !== false) {
+        const changeResult = await changeDetectionService.detectChanges(
+          page,
+          urlConfig.id,
+          urlConfig.changeThreshold || 10
+        );
+        if (changeResult.hasChanged) {
+          changesDetected++;
+          logger.info(`[Auto] Change detected: ${changeResult.changePercent.toFixed(1)}%`);
+        }
+      }
+
+      if (urlConfig.autoScreenshot !== false) {
+        const maxScreenshots = urlConfig.screenshotPages || 10;
+        captureService.resetCounter(urlConfig.id);
+        
+        const result = await captureService.capturePageScreenshot(
+          page,
+          urlConfig.id,
+          0,
+          maxScreenshots
+        );
+        if (result) screenshotsTaken++;
+      }
+
+      if (urlConfig.autoScrape) {
+        const scrapeSelectors = typeof urlConfig.scrapeSelectors === 'string'
+          ? JSON.parse(urlConfig.scrapeSelectors)
+          : urlConfig.scrapeSelectors || [];
+
+        if (scrapeSelectors.length > 0) {
+          const scrapeResult = await scraperService.scrapeWithSelectors(
+            page,
+            urlConfig.id,
+            scrapeSelectors
+          );
+          dataScraped += scrapeResult.itemCount;
+        } else {
+          const autoResult = await scraperService.autoScrape(page, urlConfig.id);
+          dataScraped += autoResult.itemCount;
+        }
+      }
+
+      if (urlConfig.autoNavigate !== false) {
+        const traversalResult = await this.runAutoTraversal(page, urlConfig, {
+          currentScreenshots: screenshotsTaken,
+          currentPagesVisited: pagesVisited,
+          currentDataScraped: dataScraped,
+          currentActionsCompleted: actionsCompleted,
+          currentChangesDetected: changesDetected,
+        });
+
+        screenshotsTaken += traversalResult.screenshots;
+        pagesVisited += traversalResult.pagesVisited;
+        dataScraped += traversalResult.dataScraped;
+        actionsCompleted += traversalResult.actionsCompleted;
+        changesDetected += traversalResult.changesDetected;
       }
 
       const duration = Date.now() - startTime;
@@ -110,6 +226,9 @@ export class AutomationService {
           duration,
           actionsCompleted,
           screenshotsTaken,
+          pagesVisited,
+          dataScraped,
+          changesDetected,
           startedAt: new Date(startTime),
           completedAt: new Date(),
         },
@@ -124,15 +243,24 @@ export class AutomationService {
         },
       });
 
+      resilienceService.recordSuccess(urlConfig.id);
+
+      logger.info(`[Auto] Execution complete: ${pagesVisited} pages, ${screenshotsTaken} screenshots, ${dataScraped} data items`);
+
       return {
         success: true,
         duration,
         actionsCompleted,
         screenshotsTaken,
+        pagesVisited,
+        dataScraped,
+        changesDetected,
       };
     } catch (error: any) {
       const duration = Date.now() - startTime;
-      logger.error(`Execution failed for URL ${urlConfig.id}: ${error.message}`);
+      logger.error(`[Auto] Execution failed for URL ${urlConfig.id}: ${error.message}`);
+
+      resilienceService.recordFailure(urlConfig.id);
 
       await prisma.executionLog.create({
         data: {
@@ -144,6 +272,9 @@ export class AutomationService {
           duration,
           actionsCompleted,
           screenshotsTaken,
+          pagesVisited,
+          dataScraped,
+          changesDetected,
           startedAt: new Date(startTime),
           completedAt: new Date(),
         },
@@ -163,6 +294,9 @@ export class AutomationService {
         duration,
         actionsCompleted,
         screenshotsTaken,
+        pagesVisited,
+        dataScraped,
+        changesDetected,
         error: error.message,
         errorStack: error.stack,
       };
@@ -173,13 +307,166 @@ export class AutomationService {
     }
   }
 
+  private async runAutoTraversal(
+    page: Page,
+    urlConfig: any,
+    current: {
+      currentScreenshots: number;
+      currentPagesVisited: number;
+      currentDataScraped: number;
+      currentActionsCompleted: number;
+      currentChangesDetected: number;
+    }
+  ): Promise<{
+    screenshots: number;
+    pagesVisited: number;
+    dataScraped: number;
+    actionsCompleted: number;
+    changesDetected: number;
+  }> {
+    let screenshots = 0;
+    let pagesVisited = 0;
+    let dataScraped = 0;
+    let actionsCompleted = 0;
+    let changesDetected = 0;
+
+    const maxDepth = urlConfig.autoCrawlDepth || 3;
+    const maxPages = urlConfig.maxPagesToVisit || 50;
+    const maxScreenshots = urlConfig.screenshotPages || 10;
+    const totalPagesVisited = current.currentPagesVisited;
+
+    if (totalPagesVisited >= maxPages) {
+      return { screenshots, pagesVisited, dataScraped, actionsCompleted, changesDetected };
+    }
+
+    const traversalConfig: TraversalConfig = {
+      urlId: urlConfig.id,
+      maxDepth,
+      maxPages,
+      followExternalLinks: urlConfig.followExternalLinks || false,
+      paginationSelector: urlConfig.paginationSelector,
+      baseUrl: urlConfig.url,
+    };
+
+    await traversalService.initializeQueue(traversalConfig);
+    const discoveredLinks = await traversalService.discoverLinks(page, traversalConfig, 0);
+
+    for (const link of discoveredLinks.slice(0, Math.min(5, maxPages - totalPagesVisited - 1))) {
+      if (resilienceService.isCircuitOpen(urlConfig.id)) {
+        logger.warn(`[Auto] Circuit breaker open, stopping traversal`);
+        break;
+      }
+
+      try {
+        logger.info(`[Auto] Visiting: ${link}`);
+        
+        const navSuccess = await resilienceService.safeNavigate(page, link);
+        if (!navSuccess) {
+          await traversalService.markPageFailed(urlConfig.id, link);
+          continue;
+        }
+
+        pagesVisited++;
+        actionsCompleted++;
+
+        await resilienceService.waitForPageStable(page);
+        await resilienceService.handlePopups(page);
+
+        const pageInfo = await traversalService.extractPageInfo(page, 1);
+        await traversalService.recordPageVisit(urlConfig.id, pageInfo);
+
+        if (urlConfig.changeDetection !== false) {
+          const changeResult = await changeDetectionService.detectChanges(
+            page,
+            urlConfig.id,
+            urlConfig.changeThreshold || 10
+          );
+          if (changeResult.hasChanged) changesDetected++;
+        }
+
+        if (urlConfig.autoScreenshot !== false && 
+            (current.currentScreenshots + screenshots) < maxScreenshots) {
+          const result = await captureService.capturePageScreenshot(
+            page,
+            urlConfig.id,
+            current.currentScreenshots + screenshots,
+            maxScreenshots
+          );
+          if (result) screenshots++;
+        }
+
+        if (urlConfig.autoScrape) {
+          const autoResult = await scraperService.autoScrape(page, urlConfig.id);
+          dataScraped += autoResult.itemCount;
+        }
+
+        await traversalService.markPageComplete(urlConfig.id, link);
+
+        const delay = this.getRandomDelay(
+          urlConfig.delayBetweenActions || 1000,
+          urlConfig.randomBehaviorVariation || 10
+        );
+        await this.sleep(delay);
+
+      } catch (error: any) {
+        logger.error(`[Auto] Failed to visit ${link}: ${error.message}`);
+        await traversalService.markPageFailed(urlConfig.id, link);
+      }
+    }
+
+    if (urlConfig.paginationSelector) {
+      let paginationCount = 0;
+      const maxPagination = 5;
+
+      while (paginationCount < maxPagination && 
+             (totalPagesVisited + pagesVisited) < maxPages) {
+        const hasNextPage = await traversalService.handlePagination(
+          page,
+          urlConfig.paginationSelector
+        );
+
+        if (!hasNextPage) break;
+
+        paginationCount++;
+        pagesVisited++;
+        actionsCompleted++;
+
+        await resilienceService.waitForPageStable(page);
+
+        if (urlConfig.autoScreenshot !== false && 
+            (current.currentScreenshots + screenshots) < maxScreenshots) {
+          const result = await captureService.capturePageScreenshot(
+            page,
+            urlConfig.id,
+            current.currentScreenshots + screenshots,
+            maxScreenshots
+          );
+          if (result) screenshots++;
+        }
+
+        if (urlConfig.autoScrape) {
+          const autoResult = await scraperService.autoScrape(page, urlConfig.id);
+          dataScraped += autoResult.itemCount;
+        }
+
+        const delay = this.getRandomDelay(
+          urlConfig.delayBetweenActions || 1000,
+          urlConfig.randomBehaviorVariation || 10
+        );
+        await this.sleep(delay);
+      }
+    }
+
+    return { screenshots, pagesVisited, dataScraped, actionsCompleted, changesDetected };
+  }
+
   private async executeStep(page: Page, step: InteractionStep, urlConfig: any) {
     const timeout = step.timeout || 30000;
 
     switch (step.type) {
       case 'navigate':
         if (step.value) {
-          await page.goto(step.value, { waitUntil: 'networkidle2', timeout });
+          await resilienceService.safeNavigate(page, step.value, { timeout });
         }
         break;
 
@@ -252,7 +539,7 @@ export class AutomationService {
         break;
 
       case 'scroll':
-        await page.evaluate((x, y) => window.scrollBy(x, y), step.xOffset || 0, step.yOffset || 0);
+        await this.humanScroll(page, step.xOffset || 0, step.yOffset || 0);
         break;
 
       case 'scrollToElement':
@@ -263,11 +550,11 @@ export class AutomationService {
         break;
 
       case 'scrollToBottom':
-        await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+        await this.humanScrollToBottom(page);
         break;
 
       case 'scrollToTop':
-        await page.evaluate(() => window.scrollTo(0, 0));
+        await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
         break;
 
       case 'waitForSelector':
@@ -285,7 +572,7 @@ export class AutomationService {
         break;
 
       case 'screenshot':
-        await this.captureScreenshot(page, urlConfig.id, step.selector);
+        await captureService.capturePageScreenshot(page, urlConfig.id, 0, 100);
         break;
 
       case 'evaluateJs':
@@ -305,6 +592,19 @@ export class AutomationService {
       case 'reload':
         await page.reload({ waitUntil: 'networkidle2' });
         break;
+
+      case 'hover':
+        if (step.selector) {
+          await page.waitForSelector(step.selector, { timeout });
+          await this.humanHover(page, step.selector);
+        }
+        break;
+
+      case 'dragAndDrop':
+        if (step.selector && step.targetSelector) {
+          await this.humanDragAndDrop(page, step.selector, step.targetSelector);
+        }
+        break;
     }
   }
 
@@ -315,7 +615,7 @@ export class AutomationService {
       if (box) {
         const x = box.x + box.width / 2 + (Math.random() - 0.5) * 10;
         const y = box.y + box.height / 2 + (Math.random() - 0.5) * 10;
-        await page.mouse.move(x, y, { steps: 10 + Math.floor(Math.random() * 10) });
+        await this.humanMouseMove(page, x, y);
         await this.sleep(100 + Math.random() * 200);
         await page.mouse.click(x, y);
       }
@@ -326,6 +626,90 @@ export class AutomationService {
     for (const char of text) {
       await page.keyboard.type(char);
       await this.sleep(50 + Math.random() * 100);
+      
+      if (Math.random() < 0.02) {
+        await this.sleep(200 + Math.random() * 300);
+      }
+    }
+  }
+
+  private async humanMouseMove(page: Page, targetX: number, targetY: number) {
+    const startX = Math.random() * 100;
+    const startY = Math.random() * 100;
+    
+    const steps = 10 + Math.floor(Math.random() * 10);
+    
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const easeT = t * t * (3 - 2 * t);
+      
+      const x = startX + (targetX - startX) * easeT + (Math.random() - 0.5) * 5;
+      const y = startY + (targetY - startY) * easeT + (Math.random() - 0.5) * 5;
+      
+      await page.mouse.move(x, y);
+      await this.sleep(10 + Math.random() * 20);
+    }
+  }
+
+  private async humanScroll(page: Page, xOffset: number, yOffset: number) {
+    const steps = 5 + Math.floor(Math.random() * 5);
+    const stepX = xOffset / steps;
+    const stepY = yOffset / steps;
+
+    for (let i = 0; i < steps; i++) {
+      await page.evaluate(
+        (x, y) => window.scrollBy(x, y),
+        stepX + (Math.random() - 0.5) * 10,
+        stepY + (Math.random() - 0.5) * 10
+      );
+      await this.sleep(50 + Math.random() * 100);
+    }
+  }
+
+  private async humanScrollToBottom(page: Page) {
+    const pageHeight = await page.evaluate(() => document.body.scrollHeight);
+    const viewportHeight = page.viewport()?.height || 1080;
+    const scrollDistance = pageHeight - viewportHeight;
+    
+    if (scrollDistance > 0) {
+      await this.humanScroll(page, 0, scrollDistance);
+    }
+  }
+
+  private async humanHover(page: Page, selector: string) {
+    const element = await page.$(selector);
+    if (element) {
+      const box = await element.boundingBox();
+      if (box) {
+        const x = box.x + box.width / 2 + (Math.random() - 0.5) * 5;
+        const y = box.y + box.height / 2 + (Math.random() - 0.5) * 5;
+        await this.humanMouseMove(page, x, y);
+        await this.sleep(200 + Math.random() * 300);
+      }
+    }
+  }
+
+  private async humanDragAndDrop(page: Page, sourceSelector: string, targetSelector: string) {
+    const source = await page.$(sourceSelector);
+    const target = await page.$(targetSelector);
+
+    if (source && target) {
+      const sourceBox = await source.boundingBox();
+      const targetBox = await target.boundingBox();
+
+      if (sourceBox && targetBox) {
+        const startX = sourceBox.x + sourceBox.width / 2;
+        const startY = sourceBox.y + sourceBox.height / 2;
+        const endX = targetBox.x + targetBox.width / 2;
+        const endY = targetBox.y + targetBox.height / 2;
+
+        await this.humanMouseMove(page, startX, startY);
+        await page.mouse.down();
+        await this.sleep(100 + Math.random() * 100);
+        await this.humanMouseMove(page, endX, endY);
+        await this.sleep(100 + Math.random() * 100);
+        await page.mouse.up();
+      }
     }
   }
 

@@ -10,6 +10,7 @@ const nextConfig: NextConfig = {
     "*.repl.co",
     "*.kirk.replit.dev",
     "*.picard.replit.dev",
+    "*.pike.replit.dev",
   ],
   output: process.env.NEXT_OUTPUT_MODE as "standalone" | "export" | undefined,
   async rewrites() {

@@ -55,6 +55,7 @@ export const screenshotApi = {
     api.get(`/api/screenshots/url/${urlId}`, { params: { limit, offset } }),
   getById: (id: string) => api.get(`/api/screenshots/${id}`),
   delete: (id: string) => api.delete(`/api/screenshots/${id}`),
+  deleteAll: () => api.delete('/api/screenshots'),
   getFileUrl: (id: string) => `${API_URL}/api/screenshots/${id}/file`,
 };
 

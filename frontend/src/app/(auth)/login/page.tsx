@@ -9,6 +9,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { toast } from 'sonner';
+import { Mail, Lock, Shield, ArrowRight } from 'lucide-react';
+import { ThemeToggle } from '@/components/theme-toggle';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -48,13 +50,20 @@ export default function LoginPage() {
 
   if (requires2FA) {
     return (
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle>Two-Factor Authentication</CardTitle>
+      <div className="relative w-full max-w-md">
+        <div className="absolute top-0 right-0 -mt-12">
+          <ThemeToggle />
+        </div>
+        <Card className="w-full max-w-md shadow-lg">
+          <CardHeader className="text-center pb-2">
+          <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+            <Shield className="h-6 w-6 text-primary" />
+          </div>
+          <CardTitle className="text-xl">Two-Factor Authentication</CardTitle>
           <CardDescription>Enter the code from your authenticator app</CardDescription>
         </CardHeader>
         <form onSubmit={handle2FA}>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 pt-4">
             <div className="space-y-2">
               <Label htmlFor="code">Verification Code</Label>
               <Input
@@ -65,61 +74,79 @@ export default function LoginPage() {
                 onChange={(e) => setCode(e.target.value)}
                 maxLength={6}
                 required
+                className="text-center text-lg tracking-widest"
               />
             </div>
           </CardContent>
-          <CardFooter>
-            <Button type="submit" className="w-full" disabled={isLoading}>
+          <CardFooter className="flex-col gap-4 pt-2">
+            <Button type="submit" className="w-full gap-2" disabled={isLoading}>
               {isLoading ? 'Verifying...' : 'Verify'}
+              {!isLoading && <ArrowRight className="h-4 w-4" />}
             </Button>
           </CardFooter>
         </form>
       </Card>
+      </div>
     );
   }
 
   return (
-    <Card className="w-full max-w-md">
-      <CardHeader>
-        <CardTitle>Login</CardTitle>
-        <CardDescription>Enter your credentials to access your account</CardDescription>
+    <div className="relative w-full max-w-md">
+      <div className="absolute top-0 right-0 -mt-12">
+        <ThemeToggle />
+      </div>
+      <Card className="w-full max-w-md shadow-lg">
+      <CardHeader className="text-center pb-2">
+        <CardTitle className="text-xl">Welcome Back</CardTitle>
+        <CardDescription>Sign in to your account to continue</CardDescription>
       </CardHeader>
       <form onSubmit={handleLogin}>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-4 pt-4">
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
+            <div className="relative">
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                id="email"
+                type="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="pl-9"
+              />
+            </div>
           </div>
           <div className="space-y-2">
             <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
+            <div className="relative">
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="pl-9"
+                placeholder="Enter your password"
+              />
+            </div>
           </div>
         </CardContent>
-        <CardFooter className="flex flex-col gap-4">
-          <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading ? 'Logging in...' : 'Login'}
+        <CardFooter className="flex-col gap-4 pt-2">
+          <Button type="submit" className="w-full gap-2" disabled={isLoading}>
+            {isLoading ? 'Signing in...' : 'Sign In'}
+            {!isLoading && <ArrowRight className="h-4 w-4" />}
           </Button>
           <p className="text-sm text-muted-foreground">
             Don&apos;t have an account?{' '}
-            <Link href="/register" className="text-primary hover:underline">
-              Register
+            <Link href="/register" className="text-primary hover:underline font-medium">
+              Create one
             </Link>
           </p>
         </CardFooter>
       </form>
     </Card>
+    </div>
   );
 }
