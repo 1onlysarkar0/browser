@@ -1,0 +1,131 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id               String    @id @default(cuid())
+  email            String    @unique
+  passwordHash     String
+  twoFactorEnabled Boolean   @default(false)
+  twoFactorSecret  String?
+  backupCodes      String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  urls          Url[]
+  sessions      Session[]
+  executionLogs ExecutionLog[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@map("sessions")
+}
+
+model Url {
+  id          String  @id @default(cuid())
+  userId      String
+  user        User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  url         String
+  label       String
+  enabled     Boolean @default(true)
+  description String?
+
+  runIntervalSeconds Int      @default(1800)
+  scheduleStartTime  String?
+  scheduleEndTime    String?
+  timezone           String   @default("UTC")
+  repeatCount        Int?
+
+  navigationLinks         String  @default("[]")
+  interactions            String  @default("[]")
+  formDataMappings        String?
+  delayBetweenActions     Int     @default(1000)
+  randomBehaviorVariation Int     @default(10)
+
+  proxyUrl        String?
+  customHeaders   String?
+  customCookies   String?
+  customUserAgent String?
+  javascriptCode  String?
+  networkThrottle String?
+
+  screenshotInterval Int?
+  errorNotifications Boolean @default(false)
+  performanceLogging Boolean @default(true)
+
+  lastRunAt       DateTime?
+  nextScheduledAt DateTime?
+  lastErrorAt     DateTime?
+  errorCount      Int       @default(0)
+  successCount    Int       @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  configurations UrlConfiguration[]
+  screenshots    Screenshot[]
+  executionLogs  ExecutionLog[]
+
+  @@map("urls")
+}
+
+model UrlConfiguration {
+  id          String @id @default(cuid())
+  urlId       String
+  url         Url    @relation(fields: [urlId], references: [id], onDelete: Cascade)
+  configKey   String
+  configValue String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([urlId, configKey])
+  @@map("url_configurations")
+}
+
+model Screenshot {
+  id       String @id @default(cuid())
+  urlId    String
+  url      Url    @relation(fields: [urlId], references: [id], onDelete: Cascade)
+  filePath String
+  fileName String
+  width    Int
+  height   Int
+  fileSize Int
+
+  capturedAt DateTime
+  createdAt  DateTime @default(now())
+
+  @@map("screenshots")
+}
+
+model ExecutionLog {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  urlId         String
+  url           Url       @relation(fields: [urlId], references: [id], onDelete: Cascade)
+  status        String
+  errorMessage  String?
+  errorStack    String?
+  duration      Int
+  actionsCompleted  Int
+  screenshotsTaken  Int
+  startedAt     DateTime
+  completedAt   DateTime?
+
+  @@map("execution_logs")
+}

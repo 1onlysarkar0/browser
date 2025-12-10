@@ -1,0 +1,66 @@
+import { Router, Response } from 'express';
+import { screenshotService } from '../services/screenshot.service';
+import { authMiddleware } from '../middleware/auth.middleware';
+import { AuthenticatedRequest } from '../types';
+
+const router = Router();
+
+router.use(authMiddleware);
+
+router.get('/', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 50;
+    const offset = parseInt(req.query.offset as string) || 0;
+    
+    const result = await screenshotService.getAllForUser(req.userId!, limit, offset);
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/url/:urlId', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 50;
+    const offset = parseInt(req.query.offset as string) || 0;
+    
+    const result = await screenshotService.findByUrlId(
+      req.params.urlId,
+      req.userId!,
+      limit,
+      offset
+    );
+    res.json(result);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+router.get('/:id', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const screenshot = await screenshotService.findById(req.params.id, req.userId!);
+    res.json({ screenshot });
+  } catch (error: any) {
+    res.status(404).json({ error: error.message });
+  }
+});
+
+router.get('/:id/file', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { filePath, fileName } = await screenshotService.getFile(req.params.id, req.userId!);
+    res.download(filePath, fileName);
+  } catch (error: any) {
+    res.status(404).json({ error: error.message });
+  }
+});
+
+router.delete('/:id', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    await screenshotService.delete(req.params.id, req.userId!);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+export default router;
