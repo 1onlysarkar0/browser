@@ -16,6 +16,7 @@ import {
   executeSessionAction,
   getSessionScreenshot,
   hasActiveSession,
+  initializeChromium,
 } from "./automation";
 import { insertUrlSchema } from "@shared/schema";
 import path from "path";
@@ -32,6 +33,7 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  await initializeChromium();
   initializeScheduler();
 
   app.get("/api/status", async (req, res) => {

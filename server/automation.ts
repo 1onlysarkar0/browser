@@ -3,6 +3,7 @@ import path from "path";
 import fs from "fs";
 import { storage } from "./storage";
 import type { Action, Url, Recording } from "@shared/schema";
+import { ensureChromiumInstalled, getSavedChromiumPath, validateChromiumPath, getCachedChromiumPath, isChromiumCheckDone } from "./chromium-installer";
 
 const DATA_DIR = process.env.DATA_DIR || "./data";
 const SCREENSHOTS_DIR = path.join(DATA_DIR, "screenshots");
@@ -12,7 +13,23 @@ if (!fs.existsSync(SCREENSHOTS_DIR)) {
 }
 
 let activeBrowsers = 0;
+let cachedChromiumPath: string | null = null;
 const scheduledJobs: Map<number, NodeJS.Timeout> = new Map();
+
+export async function initializeChromium(): Promise<void> {
+  console.log("Initializing Chromium...");
+  cachedChromiumPath = await ensureChromiumInstalled();
+  if (cachedChromiumPath) {
+    console.log(`Chromium initialized at: ${cachedChromiumPath}`);
+    const settings = storage.getSettings();
+    if (!settings.chromiumPath || !fs.existsSync(settings.chromiumPath)) {
+      storage.updateSettings({ chromiumPath: cachedChromiumPath });
+      console.log("Updated settings with detected Chromium path");
+    }
+  } else {
+    console.warn("Chromium not available - browser automation will not work");
+  }
+}
 
 // Session manager for live recording sessions
 interface RecordingSession {
@@ -54,29 +71,68 @@ export function getScheduledTasksCount(): number {
 }
 
 export async function detectChromiumPath(): Promise<string | null> {
+  // 1. Use local cached path if available and valid
+  if (cachedChromiumPath && fs.existsSync(cachedChromiumPath)) {
+    return cachedChromiumPath;
+  }
+  
+  // 2. Use installer's cached path
+  const installerCached = getCachedChromiumPath();
+  if (installerCached && fs.existsSync(installerCached)) {
+    cachedChromiumPath = installerCached;
+    return installerCached;
+  }
+  
+  // 3. Check saved config
+  const savedPath = getSavedChromiumPath();
+  if (savedPath) {
+    cachedChromiumPath = savedPath;
+    return savedPath;
+  }
+  
+  // 4. Check environment variable
+  if (process.env.PUPPETEER_EXECUTABLE_PATH && fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH)) {
+    cachedChromiumPath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    return process.env.PUPPETEER_EXECUTABLE_PATH;
+  }
+  
+  // 5. Check common system paths (quick check, no heavy operations)
   const possiblePaths = [
-    process.env.PUPPETEER_EXECUTABLE_PATH,
     "/usr/bin/chromium-browser",
     "/usr/bin/chromium",
     "/usr/bin/google-chrome",
     "/usr/bin/google-chrome-stable",
+    "/snap/bin/chromium",
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     "/Applications/Chromium.app/Contents/MacOS/Chromium",
-  ].filter(Boolean) as string[];
-
-  try {
-    const puppeteerPath = puppeteer.executablePath();
-    if (puppeteerPath && fs.existsSync(puppeteerPath)) {
-      return puppeteerPath;
-    }
-  } catch (e) {}
+  ];
 
   for (const p of possiblePaths) {
     if (fs.existsSync(p)) {
+      cachedChromiumPath = p;
       return p;
     }
   }
 
+  // 6. Try Puppeteer's bundled Chromium
+  try {
+    const puppeteerPath = puppeteer.executablePath();
+    if (puppeteerPath && fs.existsSync(puppeteerPath)) {
+      cachedChromiumPath = puppeteerPath;
+      return puppeteerPath;
+    }
+  } catch (e) {}
+
+  // 7. Only try ensureChromiumInstalled if not already checked (prevents repeated checks)
+  if (!isChromiumCheckDone()) {
+    const installedPath = await ensureChromiumInstalled();
+    if (installedPath) {
+      cachedChromiumPath = installedPath;
+      return installedPath;
+    }
+  }
+
+  // No Chromium found
   return null;
 }
 
