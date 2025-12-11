@@ -1,7 +1,7 @@
 services:
   - type: web
     name: browser-automation
-    plan: starter # or free / standard depending on your account
+    plan: starter
     envVars:
       - key: NODE_ENV
         value: production
