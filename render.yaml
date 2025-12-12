@@ -1,12 +1,19 @@
 services:
   - type: web
     name: browser-automation
-    plan: starter
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
     envVars:
       - key: NODE_ENV
         value: production
+      - key: PORT
+        value: "5000"
+      - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
+        value: "true"
       - key: PUPPETEER_EXECUTABLE_PATH
-        value: /usr/bin/chromium
-    docker:
-      webService:
-        dockerfilePath: ./Dockerfile
+        value: /usr/bin/google-chrome-stable
+      - key: DATA_DIR
+        value: /app/data
+    healthCheckPath: /api/status
+    autoDeploy: true
