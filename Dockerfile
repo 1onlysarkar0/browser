@@ -47,11 +47,16 @@ ENV PORT=5000
 
 COPY package*.json ./
 
-RUN npm ci --omit=dev --unsafe-perm
+# Install ALL dependencies (including devDependencies needed for build)
+RUN npm ci --unsafe-perm
 
 COPY . .
 
+# Build the application
 RUN npm run build
+
+# Remove devDependencies after build to reduce image size
+RUN npm prune --production
 
 EXPOSE 5000
 
