@@ -46,11 +46,11 @@ ENV NODE_ENV=production
 ENV PORT=5000
 
 COPY package*.json ./
+COPY scripts/ scripts/
+COPY . .
 
 # Install ALL dependencies (including devDependencies needed for build)
 RUN npm ci --unsafe-perm
-
-COPY . .
 
 # Build the application
 RUN npm run build
