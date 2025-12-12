@@ -5,9 +5,18 @@ import path from "path";
 const DATA_DIR = process.env.DATA_DIR || "./data";
 const CHROMIUM_CONFIG_PATH = path.join(DATA_DIR, "chromium-path.json");
 
-// Cache the result so we don't keep checking on every request
 let chromiumCheckDone = false;
 let cachedChromiumPath: string | null = null;
+
+const SYSTEM_CHROME_PATHS = [
+  "/usr/bin/google-chrome-stable",
+  "/usr/bin/google-chrome",
+  "/usr/bin/chromium-browser",
+  "/usr/bin/chromium",
+  "/snap/bin/chromium",
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  "/Applications/Chromium.app/Contents/MacOS/Chromium",
+];
 
 function getPuppeteerCacheDir(): string {
   if (process.env.PUPPETEER_CACHE_DIR) {
@@ -36,7 +45,6 @@ export function getSavedChromiumPath(): string | null {
       }
     }
   } catch (e) {
-    // Silently fail
   }
   return null;
 }
@@ -51,7 +59,7 @@ export function saveChromiumPath(chromiumPath: string, version: string): void {
       version,
       cacheDir: getPuppeteerCacheDir(),
       installedAt: new Date().toISOString(),
-      environment: process.env.RENDER ? "render" : "local",
+      environment: process.env.RENDER ? "render" : (process.env.REPL_ID ? "replit" : "local"),
     };
     fs.writeFileSync(CHROMIUM_CONFIG_PATH, JSON.stringify(config, null, 2));
     console.log(`Chromium path saved to: ${CHROMIUM_CONFIG_PATH}`);
@@ -68,19 +76,29 @@ export function isChromiumCheckDone(): boolean {
   return chromiumCheckDone;
 }
 
+function findSystemChrome(): string | null {
+  if (process.env.PUPPETEER_EXECUTABLE_PATH && fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH)) {
+    return process.env.PUPPETEER_EXECUTABLE_PATH;
+  }
+  
+  for (const chromePath of SYSTEM_CHROME_PATHS) {
+    if (fs.existsSync(chromePath)) {
+      return chromePath;
+    }
+  }
+  return null;
+}
+
 export async function ensureChromiumInstalled(): Promise<string | null> {
-  // If we already checked, return cached result
   if (chromiumCheckDone) {
     return cachedChromiumPath;
   }
 
   console.log("Checking for Chromium installation...");
-  console.log(`Environment: ${process.env.RENDER ? "Render" : "Local/Replit"}`);
+  console.log(`Environment: ${process.env.RENDER ? "Render" : (process.env.REPL_ID ? "Replit" : "Local")}`);
   
-  // Mark as checked to prevent repeated checks
   chromiumCheckDone = true;
   
-  // 1. Check saved config first
   const savedPath = getSavedChromiumPath();
   if (savedPath) {
     console.log(`Using saved Chromium path: ${savedPath}`);
@@ -88,14 +106,14 @@ export async function ensureChromiumInstalled(): Promise<string | null> {
     return savedPath;
   }
   
-  // 2. Check environment variable
-  if (process.env.PUPPETEER_EXECUTABLE_PATH && fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH)) {
-    console.log(`Using PUPPETEER_EXECUTABLE_PATH: ${process.env.PUPPETEER_EXECUTABLE_PATH}`);
-    cachedChromiumPath = process.env.PUPPETEER_EXECUTABLE_PATH;
-    return process.env.PUPPETEER_EXECUTABLE_PATH;
+  const systemChrome = findSystemChrome();
+  if (systemChrome) {
+    console.log(`Using system Chrome: ${systemChrome}`);
+    cachedChromiumPath = systemChrome;
+    saveChromiumPath(systemChrome, "system");
+    return systemChrome;
   }
   
-  // 3. Check Render-specific persistent cache location
   if (process.env.RENDER) {
     const renderCachePath = "/opt/render/project/.cache/puppeteer";
     const chromePath = await findChromeInDirectory(renderCachePath);
@@ -106,24 +124,6 @@ export async function ensureChromiumInstalled(): Promise<string | null> {
     }
   }
   
-  // 4. Check common system paths
-  const systemPaths = [
-    "/usr/bin/chromium-browser",
-    "/usr/bin/chromium",
-    "/usr/bin/google-chrome",
-    "/usr/bin/google-chrome-stable",
-    "/snap/bin/chromium",
-  ];
-  
-  for (const p of systemPaths) {
-    if (fs.existsSync(p)) {
-      console.log(`Found system Chromium at: ${p}`);
-      cachedChromiumPath = p;
-      return p;
-    }
-  }
-  
-  // 5. Try Puppeteer's bundled Chromium
   try {
     const puppeteerPath = puppeteer.executablePath();
     if (puppeteerPath && fs.existsSync(puppeteerPath)) {
@@ -132,10 +132,8 @@ export async function ensureChromiumInstalled(): Promise<string | null> {
       return puppeteerPath;
     }
   } catch (e) {
-    // Silent fail
   }
   
-  // 6. Try to launch Puppeteer (only once)
   console.log("Attempting to launch Puppeteer to trigger Chromium download...");
   try {
     if (process.env.RENDER && !process.env.PUPPETEER_CACHE_DIR) {
@@ -170,9 +168,9 @@ export async function ensureChromiumInstalled(): Promise<string | null> {
   
   console.error("No Chromium installation found. Browser automation will not work.");
   console.log("Troubleshooting tips:");
-  console.log("  1. On Render: Set PUPPETEER_CACHE_DIR=/opt/render/project/.cache/puppeteer");
-  console.log("  2. Use ./render-build.sh as your build command");
-  console.log("  3. Ensure postinstall script runs during npm install");
+  console.log("  1. Set PUPPETEER_EXECUTABLE_PATH to your Chrome installation");
+  console.log("  2. Use Docker with pre-installed Chrome");
+  console.log("  3. Install Chrome/Chromium system-wide");
   
   return null;
 }
