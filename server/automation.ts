@@ -46,7 +46,8 @@ const SESSION_TIMEOUT = 5 * 60 * 1000; // 5 minutes of inactivity
 // Cleanup inactive sessions periodically
 setInterval(async () => {
   const now = Date.now();
-  for (const [urlId, session] of activeSessions.entries()) {
+  const sessionEntries = Array.from(activeSessions.entries());
+  for (const [urlId, session] of sessionEntries) {
     if (now - session.lastActivity > SESSION_TIMEOUT) {
       console.log(`Closing inactive session for URL ${urlId}`);
       try {
@@ -496,7 +497,8 @@ export async function startSession(urlId: number): Promise<{ success: boolean; s
   // Only allow one recording session at a time for memory efficiency
   if (activeSessions.size > 0) {
     // Close all existing sessions first
-    for (const [existingUrlId, session] of activeSessions.entries()) {
+    const sessionEntries = Array.from(activeSessions.entries());
+    for (const [existingUrlId, session] of sessionEntries) {
       try {
         await session.browser.close().catch(() => {});
         activeSessions.delete(existingUrlId);
