@@ -1,37 +1,58 @@
-# Dockerfile for Node 18 + system Chromium (Render-ready)
-FROM node:18-slim
+FROM node:20-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 WORKDIR /app
 
-# Install minimal chromium and libs required by Puppeteer/Chromium
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    chromium \
+    wget \
+    gnupg \
     ca-certificates \
-    curl \
-    libatk1.0-0 libatk-bridge2.0-0 libcairo2 libdrm2 libgbm1 libgtk-3-0 \
-    libnss3 libnspr4 libx11-6 libxcomposite1 libxdamage1 libxext6 libxfixes3 \
-    libxkbcommon0 libxrandr2 libxshmfence1 libxrender1 libxcb1 libasound2 \
-  && rm -rf /var/lib/apt/lists/*
+    fonts-liberation \
+    fonts-noto-color-emoji \
+    fonts-noto-cjk \
+    libnss3 \
+    libnspr4 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libdbus-1-3 \
+    libexpat1 \
+    libxkbcommon0 \
+    libx11-6 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxext6 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
+    libpango-1.0-0 \
+    libcairo2 \
+    libasound2 \
+    libatspi2.0-0 \
+    libgtk-3-0 \
+    libxcb1 \
+    libxshmfence1 \
+    && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg \
+    && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends google-chrome-stable \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
-# Tell Puppeteer not to download its own chromium during npm install
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
+ENV NODE_ENV=production
+ENV PORT=5000
 
-# Install dependencies (copy package manifests first to leverage docker layer cache)
 COPY package*.json ./
 
-# Use npm ci for reproducible installs (works with package-lock.json)
-RUN npm ci --unsafe-perm
+RUN npm ci --omit=dev --unsafe-perm
 
-# Copy app source
 COPY . .
 
-# Build the app (if your project has a build step)
-RUN npm run build || true
+RUN npm run build
 
-# Expose port your app listens on (change if not 3000)
-EXPOSE 3000
+EXPOSE 5000
 
-# Start command (adjust if your package.json uses a different start script)
-CMD ["npm", "run", "start"]
+CMD ["node", "dist/index.cjs"]
