@@ -42,21 +42,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
-ENV NODE_ENV=production
 ENV PORT=5000
 
 COPY package*.json ./
 COPY scripts/ scripts/
 COPY . .
 
-# Install ALL dependencies (including devDependencies needed for build)
+# Install ALL dependencies (NODE_ENV must NOT be production here to include devDependencies)
 RUN npm ci --unsafe-perm
 
-# Build the application
+# Build the application (still needs devDependencies like esbuild)
 RUN npm run build
 
 # Remove devDependencies after build to reduce image size
 RUN npm prune --production
+
+# Set production mode for runtime only (AFTER build is complete)
+ENV NODE_ENV=production
 
 EXPOSE 5000
 
