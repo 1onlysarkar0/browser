@@ -32,9 +32,18 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
+    host: "0.0.0.0",
+    port: 5000,
+    strictPort: true,
     fs: {
       strict: true,
       deny: ["**/.*"],
     },
+    hmr: process.env.REPL_ID
+      ? {
+          clientPort: 443,
+          protocol: "wss",
+        }
+      : true,
   },
 });
